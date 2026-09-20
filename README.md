@@ -1,5 +1,8 @@
 # PX4 ROS 2 Drone Navigation
 
+[Korean README](README_kor.md) | [Korean learning guide](guide/README.md) |
+[Korean architecture analysis](docs/archify/README.md)
+
 This repository is a ROS 2 workspace for a PX4/Gazebo drone navigation stack.
 The main package is `drone_city_nav`, an ament CMake package built with
 `colcon`.

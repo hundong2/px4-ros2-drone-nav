@@ -1,0 +1,217 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "PX4 ROS 2 Drone Navigation 대표 실행 아키텍처",
+    "output": "docs/archify/architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/hundong2/px4-ros2-drone-nav.git",
+      "revision": "ba9dd45c1807c5f85eb7ff8495c7950ca3843b23"
+    },
+    "legend": {"mode": "hidden"},
+    "viewBox": [1220, 450],
+    "views": [
+      {
+        "id": "sensor_to_world",
+        "label": "센서에서 월드까지",
+        "focus": ["simulation_io", "perception", "world_pipeline"],
+        "note": "Gazebo lidar와 PX4 상태가 revisioned 3D 월드 증거로 변환됩니다."
+      },
+      {
+        "id": "plan_to_control",
+        "label": "계획에서 제어까지",
+        "focus": ["world_pipeline", "route_planner", "mppi", "execution", "offboard_px4"],
+        "note": "일관된 월드에서 경로·국소 궤적·검증된 PX4 명령이 만들어집니다."
+      },
+      {
+        "id": "fail_closed_safety",
+        "label": "Fail-closed 안전 경계",
+        "focus": ["contact_safety", "execution", "offboard_px4"],
+        "note": "충돌 사건, horizon admission, revocation과 force-disarm 경계를 분리해 봅니다."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "orchestration",
+      "type": "backend",
+      "label": "컨테이너·런치",
+      "sublabel": "Docker + ros2 launch",
+      "tag": "entrypoint",
+      "pos": [190, 30],
+      "size": [145, 60],
+      "sources": [
+        {"path": "scripts/container_run.sh", "line": 19, "end_line": 24, "label": "NVIDIA preflight"},
+        {"path": "scripts/run_drone_nav_sim.sh", "line": 995, "end_line": 1029, "label": "runtime launch"},
+        {"path": "drone_city_nav/launch/city_nav.launch.py", "line": 414, "end_line": 478, "label": "ROS node graph"}
+      ]
+    },
+    {
+      "id": "simulation_io",
+      "type": "external",
+      "label": "Gazebo·PX4 SITL·브리지",
+      "sublabel": "3D lidar + px4_msgs",
+      "tag": "simulation boundary",
+      "pos": [20, 150],
+      "size": [145, 60],
+      "sources": [
+        {"path": "scripts/run_drone_nav_sim.sh", "line": 772, "end_line": 868, "label": "Gazebo, DDS, PX4"},
+        {"path": "drone_city_nav/launch/city_nav.launch.py", "line": 415, "end_line": 435, "label": "lidar bridge"},
+        {"path": "drone_city_nav/src/px4_autopilot_adapter.cpp", "line": 204, "end_line": 254, "label": "PX4 state ingress"}
+      ]
+    },
+    {
+      "id": "perception",
+      "type": "backend",
+      "label": "인지·위치추정",
+      "sublabel": "LIO + ObstacleMemory3D",
+      "tag": "sensor evidence",
+      "pos": [190, 150],
+      "size": [145, 60],
+      "sources": [
+        {"path": "drone_city_nav/src/lidar_inertial_odometry_node.cpp", "line": 113, "end_line": 260, "label": "LIO interfaces"},
+        {"path": "drone_city_nav/src/obstacle_memory_3d_node.cpp", "line": 329, "end_line": 410, "label": "lidar/state I/O"},
+        {"path": "drone_city_nav/src/obstacle_memory_transport_3d.cpp", "line": 200, "end_line": 255, "label": "snapshot/delta emit"}
+      ]
+    },
+    {
+      "id": "world_pipeline",
+      "type": "database",
+      "label": "WorldPipeline3D",
+      "sublabel": "비영속 immutable snapshot",
+      "tag": "latest-wins worker",
+      "pos": [360, 150],
+      "size": [145, 60],
+      "sources": [
+        {"path": "drone_city_nav/src/runtime/ros/raw_world_ingress_ros_3d.cpp", "line": 123, "end_line": 288, "label": "admission and commit"},
+        {"path": "drone_city_nav/src/world/world_pipeline_3d.cpp", "line": 90, "end_line": 190, "label": "builders and worker"},
+        {"path": "drone_city_nav/src/runtime/ros/production_mppi_node_interfaces.cpp", "line": 51, "end_line": 143, "label": "runtime wiring"}
+      ]
+    },
+    {
+      "id": "route_planner",
+      "type": "backend",
+      "label": "Route lifecycle·D* Lite",
+      "sublabel": "persistent full-3D route",
+      "tag": "strategic planning",
+      "pos": [530, 150],
+      "size": [145, 60],
+      "sources": [
+        {"path": "drone_city_nav/src/route_application/route_lifecycle_coordinator_3d.cpp", "line": 94, "end_line": 139, "label": "route ownership"},
+        {"path": "drone_city_nav/src/route_application/route_planning_coordinator_3d.cpp", "line": 165, "end_line": 245, "label": "planning worker"},
+        {"path": "drone_city_nav/src/route_application/route_planner_3d.cpp", "line": 228, "end_line": 257, "label": "D* Lite invocation"}
+      ]
+    },
+    {
+      "id": "mppi",
+      "type": "backend",
+      "label": "PlanningCycle·CUDA MPPI",
+      "sublabel": "receding-horizon control",
+      "tag": "GPU",
+      "pos": [700, 150],
+      "size": [145, 60],
+      "sources": [
+        {"path": "drone_city_nav/src/runtime/ros/production_mppi_node.cpp", "line": 202, "end_line": 224, "label": "composition root"},
+        {"path": "drone_city_nav/src/runtime/ros/production_mppi_node_planning_tick.cpp", "line": 612, "end_line": 636, "label": "controller cycle"},
+        {"path": "drone_city_nav/src/runtime/mppi_controller_3d.cpp", "line": 71, "end_line": 137, "label": "MPPI engine"}
+      ]
+    },
+    {
+      "id": "execution",
+      "type": "security",
+      "label": "ExecutionSupervisor3D",
+      "sublabel": "validate + atomic commit",
+      "tag": "fail closed",
+      "pos": [870, 150],
+      "size": [145, 60],
+      "sources": [
+        {"path": "drone_city_nav/include/drone_city_nav/execution_supervisor_3d.hpp", "line": 13, "end_line": 74, "label": "sole execution facade"},
+        {"path": "drone_city_nav/src/runtime/ros/production_mppi_node_planning_tick_finalize.cpp", "line": 125, "end_line": 160, "label": "assemble and publish"},
+        {"path": "drone_city_nav/src/runtime/ros/production_mppi_node_execution_publication.cpp", "line": 406, "end_line": 452, "label": "commit before publish"}
+      ]
+    },
+    {
+      "id": "offboard_px4",
+      "type": "security",
+      "label": "Offboard → PX4",
+      "sublabel": "admission + 50 Hz commands",
+      "tag": "control boundary",
+      "pos": [1040, 150],
+      "size": [160, 60],
+      "sources": [
+        {"path": "drone_city_nav/src/mppi_offboard_node.cpp", "line": 166, "end_line": 286, "label": "horizon and PX4 I/O"},
+        {"path": "drone_city_nav/src/mppi_offboard_node.cpp", "line": 440, "end_line": 508, "label": "horizon admission"},
+        {"path": "drone_city_nav/src/mppi_offboard_node.cpp", "line": 650, "end_line": 925, "label": "setpoints and feedback"}
+      ]
+    },
+    {
+      "id": "contact_safety",
+      "type": "security",
+      "label": "독립 충돌 안전 경로",
+      "sublabel": "contact → VehicleDestroyed",
+      "tag": "physical evidence",
+      "pos": [1040, 270],
+      "size": [160, 60],
+      "sources": [
+        {"path": "drone_city_nav/src/drone_contact_system.cpp", "line": 21, "end_line": 103, "label": "contact emission"},
+        {"path": "drone_city_nav/src/collision_crash_node.cpp", "line": 124, "end_line": 180, "label": "destruction event"},
+        {"path": "drone_city_nav/src/mppi_offboard_node.cpp", "line": 215, "end_line": 260, "label": "death latch"}
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "NVIDIA 개발 컨테이너의 ROS 2 워크스페이스",
+      "wraps": ["orchestration", "perception", "world_pipeline", "route_planner", "mppi", "execution", "offboard_px4", "contact_safety"],
+      "pad": 10
+    },
+    {
+      "kind": "security-group",
+      "label": "실행 권한·오프보드 안전 경계",
+      "wraps": ["execution", "offboard_px4", "contact_safety"],
+      "pad": 8
+    }
+  ],
+  "connections": [
+    {"from": "orchestration", "to": "perception", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "route": "straight"},
+    {"from": "simulation_io", "to": "perception", "label": "lidar + state", "variant": "emphasis", "route": "straight", "labelAt": [180, 235]},
+    {"from": "perception", "to": "world_pipeline", "label": "raw snapshot", "variant": "emphasis", "route": "straight", "labelAt": [350, 235]},
+    {"from": "world_pipeline", "to": "route_planner", "label": "resident world", "variant": "emphasis", "route": "straight", "labelAt": [520, 235]},
+    {"from": "route_planner", "to": "mppi", "label": "route ref", "variant": "emphasis", "route": "straight", "labelAt": [690, 235]},
+    {"from": "mppi", "to": "execution", "label": "candidate", "variant": "emphasis", "route": "straight", "labelAt": [860, 235]},
+    {"from": "execution", "to": "offboard_px4", "label": "committed", "variant": "security", "route": "straight", "labelAt": [1030, 235]},
+    {"from": "simulation_io", "to": "contact_safety", "label": "physical contact", "variant": "security", "fromSide": "bottom", "toSide": "bottom", "via": [[92.5, 375], [1120, 375]], "labelAt": [600, 360]},
+    {"from": "contact_safety", "to": "offboard_px4", "label": "force-disarm", "variant": "security", "fromSide": "top", "toSide": "bottom", "route": "straight", "labelAt": [1130, 240]}
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "대표 실행 경로",
+      "items": [
+        "3D lidar와 PX4 상태가 revisioned raw occupancy 및 immutable resident world로 변환됩니다.",
+        "Persistent D* Lite가 전략 경로를 유지하고 CUDA MPPI가 짧은 실행 horizon을 최적화합니다.",
+        "ExecutionSupervisor가 commit한 horizon만 offboard 경계를 거쳐 PX4로 전달됩니다."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "신뢰와 안전 경계",
+      "items": [
+        "Gazebo ground truth와 접촉 사건은 시뮬레이션 판정 경계이며 planner 입력과 구분됩니다.",
+        "Raw occupied geometry와 flight envelope가 hard authority이고 debug·soft risk는 실행 권한이 아닙니다.",
+        "Stale·invalid horizon은 admission에서 거부되며 충돌 증거는 별도 force-disarm lifecycle로 흐릅니다."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "분석 범위",
+      "items": [
+        "단일 차량 no-static 3D point-to-point 경로를 중심으로 표현했습니다.",
+        "Intercept·cooperative traffic·RViz 세부 분기는 대표 도식에서 제외했습니다.",
+        "이 저장소는 PX4 SITL/Gazebo 연구용이며 실제 기체 안전 인증을 제공하지 않습니다."
+      ]
+    }
+  ]
+}

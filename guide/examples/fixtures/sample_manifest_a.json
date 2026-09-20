@@ -1,0 +1,44 @@
+{
+  "schema": "drone_city_nav_runtime_manifest_v1",
+  "run_id": "guide-sample-a",
+  "created_at_utc": "2026-09-20T00:00:00+00:00",
+  "repository": {
+    "commit": "0123456789abcdef0123456789abcdef01234567",
+    "version": "0.3.0",
+    "describe": "v0.3.0",
+    "dirty": false,
+    "status_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "configuration": {
+    "path": "drone_city_nav/config/urban_mvp.yaml",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "size_bytes": 1000
+  },
+  "world": {
+    "path": "drone_city_nav/worlds/canonical_city.world3d.json",
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "size_bytes": 2000
+  },
+  "mission": {
+    "type": "point_to_point",
+    "goal_sequence_xyz_m": "54,378,5",
+    "scenario": {
+      "path": "drone_city_nav/config/manhattan_low_altitude_point_to_point_scenario.json",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "size_bytes": 400
+    }
+  },
+  "runtime_profile": {
+    "lidar_profile": "3d",
+    "static_map_enabled": false
+  },
+  "constrained_route_volume_bounds_m": null,
+  "raw_snapshot_bounds_m": null,
+  "effective_overrides": {
+    "CRUISE_SPEED_MPS": "5.0",
+    "LOCALIZATION_PROFILE": "lidar_inertial"
+  },
+  "raw_snapshot": {
+    "status": "pending"
+  }
+}
